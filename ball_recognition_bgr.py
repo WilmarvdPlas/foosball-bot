@@ -2,6 +2,9 @@ import cv2
 import numpy as np
 import time
 import math
+import pigpio
+import sys
+import signal
 
 CAPTURE_WIDTH = 640
 CAPTURE_HEIGHT = 360
@@ -10,8 +13,9 @@ RESIZED_WIDTH = 320
 RESIZED_HEIGHT = 180
 
 PLAYER_COUNT = 6
+PLAYERS_IN_ROW = PLAYER_COUNT / 2
 
-CAPTURE = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+CAPTURE = cv2.VideoCapture(0)
 
 CAPTURE.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_WIDTH)
 CAPTURE.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
@@ -19,11 +23,30 @@ CAPTURE.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
 BALL_LOWER_BOUND = np.array([100, 0, 200])
 BALL_UPPER_BOUND = np.array([170, 90, 255])
 
-PLAYER_LOWER_BOUND = np.array([120, 20, 80])
+PLAYER_LOWER_BOUND = np.array([120, 20, 100])
 PLAYER_UPPER_BOUND = np.array([170, 60, 170])
+
+PI = pigpio.pi()
+TRANSLATE_DEFENSE_STEP_PIN = 12
+TRANSLATE_DEFENSE_DIR_PIN = 27
+
+PI.set_mode(TRANSLATE_DEFENSE_STEP_PIN, pigpio.OUTPUT)
+PI.set_mode(TRANSLATE_DEFENSE_DIR_PIN, pigpio.OUTPUT)
 
 frame_count = 0
 start_time = time.time()
+
+def cleanup(sig, frame):
+    PI.hardware_PWM(TRANSLATE_DEFENSE_STEP_PIN, 0, 0)
+    PI.stop()
+
+    CAPTURE.release()
+    cv2.destroyAllWindows()
+
+    sys.exit(0)
+
+def clamp(n, minn, maxn):
+    return max(min(maxn, n), minn)
 
 def get_ball_center(frame):
     mask = cv2.inRange(frame, BALL_LOWER_BOUND, BALL_UPPER_BOUND)
@@ -40,8 +63,8 @@ def get_ball_center(frame):
 def get_player_centers(frame):
     mask = cv2.inRange(frame, PLAYER_LOWER_BOUND, PLAYER_UPPER_BOUND)
 
-    scaled_frame = cv2.resize(mask, (CAPTURE_WIDTH, CAPTURE_HEIGHT), interpolation=cv2.INTER_NEAREST)
-    cv2.imshow('Mask', scaled_frame)
+    # scaled_frame = cv2.resize(mask, (CAPTURE_WIDTH, CAPTURE_HEIGHT), interpolation=cv2.INTER_NEAREST)
+    # cv2.imshow('Mask', scaled_frame)
 
     coordinates = np.column_stack(np.where(mask > 0)).astype(np.float32)
 
@@ -60,7 +83,7 @@ def get_player_centers(frame):
         if len(center) < 2:
             continue
 
-        if (center[1] > RESIZED_WIDTH / 2):
+        if (center[1] < RESIZED_WIDTH / 2):
             attack_centers.append(center)
         else:
             defense_centers.append(center)
@@ -71,19 +94,15 @@ def control_motors(ball_center, attack_centers, defense_centers):
     if ball_center is None:
         return
 
-    player_y_zone = RESIZED_HEIGHT / PLAYER_COUNT / 2
-    active_player_index = math.floor(ball_center[1] / player_y_zone)
-    # defense_coords = sorted(defense_centers, key=lambda x: x[1])[active_player_index]
+    player_y_zone = RESIZED_HEIGHT / PLAYERS_IN_ROW
+    active_player_index = clamp(math.floor(ball_center[1] / player_y_zone), 0, len(attack_centers) - 1)
 
-    # defense_left() if defense_coords[1] > ball_center[0] else defense_right
+    if len(attack_centers) == PLAYERS_IN_ROW:
+        sorted_defense_centers = sorted(attack_centers, key=lambda x: x[0])
+        defense_coords = sorted_defense_centers[active_player_index]
+        PI.write(TRANSLATE_DEFENSE_DIR_PIN, pigpio.LOW) if defense_coords[0] > ball_center[1] else PI.write(TRANSLATE_DEFENSE_DIR_PIN, pigpio.HIGH)
 
     print(active_player_index)
-
-def defense_left():
-    return
-
-def defense_right():
-    return
 
 def display_frame(frame, ball_center, attack_centers, defense_centers):
     for center in attack_centers:
@@ -97,7 +116,6 @@ def display_frame(frame, ball_center, attack_centers, defense_centers):
 
     scaled_frame = cv2.resize(frame, (CAPTURE_WIDTH, CAPTURE_HEIGHT), interpolation=cv2.INTER_NEAREST)
     cv2.imshow('Frame', scaled_frame)
-
 
 def handle_frame_count():
     global frame_count, start_time
@@ -119,10 +137,13 @@ def handle_frame(frame):
     attack_player_centers, defense_player_centers = get_player_centers(frame)
 
     control_motors(ball_center, attack_player_centers, defense_player_centers)
-    display_frame(frame, ball_center, attack_player_centers, defense_player_centers)
+    # display_frame(frame, ball_center, attack_player_centers, defense_player_centers)
     handle_frame_count()
 
 def main():
+    signal.signal(signal.SIGINT, cleanup)
+    PI.hardware_PWM(TRANSLATE_DEFENSE_STEP_PIN, 500, 500000)
+
     if (not CAPTURE.isOpened()):
         print("Error opening video stream or file")
 
@@ -134,8 +155,7 @@ def main():
 
         handle_frame(frame)
 
-    CAPTURE.release()
-    cv2.destroyAllWindows()
+    cleanup(None, None)
 
 if __name__ == "__main__":
     main()
