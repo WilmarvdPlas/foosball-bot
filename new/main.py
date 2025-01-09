@@ -71,9 +71,6 @@ def get_player_centers(frame):
     percentages = [(0.35, 0.45), (0.80, 0.90)]
     filtered_mask = filter_mask_by_percentage(mask, percentages)
 
-    scaled_frame = cv2.resize(filtered_mask, (CAPTURE_WIDTH, CAPTURE_HEIGHT), interpolation=cv2.INTER_NEAREST)
-    # cv2.imshow('Mask', scaled_frame)
-
     coordinates = np.column_stack(np.where(filtered_mask > 0)).astype(np.float32)
 
     if (coordinates.shape[0] < PLAYER_COUNT):
@@ -105,10 +102,6 @@ def control_motors(ball_center, attack_centers, defense_centers):
         DEFENSE_ROW.stop_translation()
         ATTACK_ROW.stop_translation()
         
-        # if time.time() - last_ball_sighting_seconds > BALL_TIMEOUT_SECONDS:
-        #     DEFENSE_ROW.stop_translation()
-        #     ATTACK_ROW.stop_translation()
-        
         return
     
     last_ball_sighting_seconds = time.time()
@@ -117,8 +110,7 @@ def control_motors(ball_center, attack_centers, defense_centers):
     active_player_index = clamp(math.floor(ball_center[1] / player_y_zone), 0, PLAYERS_IN_ROW - 1)
 
     DEFENSE_ROW.update_actuation(ball_center, defense_centers, active_player_index)
-    ATTACK_ROW.update_actuation(ball_center, attack_centers, active_player_index)
-
+    # ATTACK_ROW.update_actuation(ball_center, attack_centers, active_player_index)
 
 def display_frame(frame, ball_center, attack_centers, defense_centers):
     for center in attack_centers:

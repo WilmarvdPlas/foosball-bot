@@ -45,8 +45,10 @@ class PlayerRow:
         self.pi.hardware_PWM(self.rotate_step_pin, ROTATE_FREQUENCY, 500000)
 
         self.pi.write(self.rotate_dir_pin, pigpio.HIGH)
+        time.sleep(0.075)
+        self.pi.write(self.rotate_dir_pin, pigpio.LOW)
 
-        threading.Thread(target=self.check_rotate_stop_condition, args=(0,)).start()
+        threading.Thread(target=self.check_rotate_stop_condition, args=(1,)).start()
         
     def shoot_backwards(self):
         self.pi.hardware_PWM(self.rotate_step_pin, ROTATE_FREQUENCY, 500000)
@@ -84,19 +86,10 @@ class PlayerRow:
 
             pid = self.compute_translation_PID(ball_pos[1], active_player_pos[0])
 
-            self.pi.write(self.translate_dir_pin, pigpio.HIGH if pid < 0 else pigpio.LOW)
-
-            if pid < 0:
-                if sorted_centers[0][0] > (0.2 * RESIZED_HEIGHT):
-                    self.pi.hardware_PWM(self.translate_step_pin, int(abs(pid)) + MIN_TRANSLATE_FREQUENCY, 500000)
-                else:
-                    self.pi.hardware_PWM(self.translate_step_pin, 0, 0)
-
-            if pid > 0:
-                if sorted_centers[2][0] < (0.8 * RESIZED_HEIGHT):
-                    self.pi.hardware_PWM(self.translate_step_pin, int(abs(pid)) + MIN_TRANSLATE_FREQUENCY, 500000)
-                else:
-                    self.pi.hardware_PWM(self.translate_step_pin, 0, 0)
+            self.pi.hardware_PWM(self.translate_step_pin, int(abs(pid)) + MIN_TRANSLATE_FREQUENCY, 500000)
+            self.pi.write(self.translate_dir_pin, pigpio.HIGH) if pid < 0 else self.pi.write(self.translate_dir_pin, pigpio.LOW)
+        else:
+            self.pi.hardware_PWM(self.translate_step_pin, 0, 0)
 
     def compute_translation_PID(self, ball_y, player_y):
         current_time_seconds = time.time()
@@ -113,4 +106,3 @@ class PlayerRow:
         self.previous_pid_time_seconds = current_time_seconds
 
         return clamp(output, MIN_TRANSLATE_FREQUENCY - MAX_TRANSLATE_FREQUENCY, MAX_TRANSLATE_FREQUENCY - MIN_TRANSLATE_FREQUENCY)
-
