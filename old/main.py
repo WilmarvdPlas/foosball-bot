@@ -25,7 +25,7 @@ BALL_LOWER_BOUND = np.array([100, 0, 200])
 BALL_UPPER_BOUND = np.array([170, 90, 255])
 
 PLAYER_LOWER_BOUND = np.array([80, 0, 80])
-PLAYER_UPPER_BOUND = np.array([170, 60, 170])
+PLAYER_UPPER_BOUND = np.array([180, 70, 180])
 
 PI = pigpio.pi()
 
@@ -48,7 +48,7 @@ TRANSLATION_STOP_PERCENTAGE = 0.035
 MIN_TRANSLATE_FREQUENCY = 250
 MAX_TRANSLATE_FREQUENCY = 1300
 
-BALL_TIMEOUT_SECONDS = 1
+BALL_TIMEOUT_SECONDS = 0.1
 
 PID_KP = 300
 PID_KI = 0
@@ -119,7 +119,7 @@ def shoot_forwards(step_pin, dir_pin, hall_pin):
     PI.hardware_PWM(step_pin, 1100, 500000)
 
     PI.write(dir_pin, pigpio.HIGH)
-    time.sleep(0.05)
+    time.sleep(0.075)
     PI.write(dir_pin, pigpio.LOW)
 
     threading.Thread(target=check_rotate_stop_condition, args=(hall_pin, step_pin, True)).start()
