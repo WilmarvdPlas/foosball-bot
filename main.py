@@ -5,8 +5,6 @@ import math
 import pigpio
 import sys
 import signal
-import threading
-from constants import *
 from shared import *
 from player_row import PlayerRow
 
@@ -16,10 +14,9 @@ CAPTURE.set(cv2.CAP_PROP_FRAME_WIDTH, CAPTURE_WIDTH)
 CAPTURE.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
 
 PI = pigpio.pi()
-lock = threading.Lock()
 
-DEFENSE_ROW = PlayerRow(12, 27, 13, 17, 23, PI, lock)
-ATTACK_ROW = PlayerRow(18, 22, 19, 24, 16, PI, lock)
+DEFENSE_ROW = PlayerRow(12, 27, 5, 17, 23, PI)
+ATTACK_ROW = PlayerRow(13, 22, 6, 24, 19, PI)
 
 last_ball_sighting_seconds = 0
 
@@ -71,6 +68,9 @@ def get_player_centers(frame):
     percentages = [(0.35, 0.45), (0.80, 0.90)]
     filtered_mask = filter_mask_by_percentage(mask, percentages)
 
+    scaled_frame = cv2.resize(filtered_mask, (CAPTURE_WIDTH, CAPTURE_HEIGHT), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow('Mask', scaled_frame)
+
     coordinates = np.column_stack(np.where(filtered_mask > 0)).astype(np.float32)
 
     if (coordinates.shape[0] < PLAYER_COUNT):
@@ -110,7 +110,7 @@ def control_motors(ball_center, attack_centers, defense_centers):
     active_player_index = clamp(math.floor(ball_center[1] / player_y_zone), 0, PLAYERS_IN_ROW - 1)
 
     DEFENSE_ROW.update_actuation(ball_center, defense_centers, active_player_index)
-    # ATTACK_ROW.update_actuation(ball_center, attack_centers, active_player_index)
+    ATTACK_ROW.update_actuation(ball_center, attack_centers, active_player_index)
 
 def display_frame(frame, ball_center, attack_centers, defense_centers):
     for center in attack_centers:

@@ -1,29 +1,34 @@
 import pigpio
+import RPi.GPIO as GPIO
 import time
 import threading
-from constants import *
 from shared import *
 
 class PlayerRow:
-    def __init__(self, translate_step_pin, translate_dir_pin, rotate_step_pin, rotate_dir_pin, hall_pin, pi, lock):
+    def __init__(self, translate_step_pin, translate_dir_pin, rotate_step_pin, rotate_dir_pin, hall_pin, pi):
         self.translate_step_pin = translate_step_pin
         self.translate_dir_pin = translate_dir_pin
         self.rotate_step_pin = rotate_step_pin
         self.rotate_dir_pin = rotate_dir_pin
         self.hall_pin = hall_pin
         self.pi = pi
-        self.lock = lock
 
+        self.lock = threading.Lock()
         self.shooting_active = False
         self.pid_last_error = 0
         self.pid_cumulative_error = 0
         self.previous_pid_time_seconds = 0
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.rotate_step_pin, GPIO.OUT)
         
         self.pi.set_mode(self.translate_step_pin, pigpio.OUTPUT)
         self.pi.set_mode(self.translate_dir_pin, pigpio.OUTPUT)
-        self.pi.set_mode(self.rotate_step_pin, pigpio.OUTPUT)
         self.pi.set_mode(self.rotate_dir_pin, pigpio.OUTPUT)
         self.pi.set_mode(self.hall_pin, pigpio.INPUT)
+
+        self.rotate_pwm = GPIO.PWM(self.rotate_step_pin, ROTATE_FREQUENCY)
+        self.rotate_pwm.start(0)
 
     def check_rotate_stop_condition(self, stop_state):
         previous_state = self.pi.read(self.hall_pin)
@@ -32,7 +37,7 @@ class PlayerRow:
             current_state = self.pi.read(self.hall_pin)
 
             if previous_state != stop_state and current_state == stop_state:
-                self.pi.hardware_PWM(self.rotate_step_pin, 0, 0)
+                self.rotate_pwm.ChangeDutyCycle(0)
                 with self.lock:
                     self.shooting_active = False
                 return
@@ -42,7 +47,7 @@ class PlayerRow:
             time.sleep(0.01)
     
     def shoot_forwards(self):
-        self.pi.hardware_PWM(self.rotate_step_pin, ROTATE_FREQUENCY, 500000)
+        self.rotate_pwm.ChangeDutyCycle(50)
 
         self.pi.write(self.rotate_dir_pin, pigpio.HIGH)
         time.sleep(0.075)
@@ -51,7 +56,7 @@ class PlayerRow:
         threading.Thread(target=self.check_rotate_stop_condition, args=(1,)).start()
         
     def shoot_backwards(self):
-        self.pi.hardware_PWM(self.rotate_step_pin, ROTATE_FREQUENCY, 500000)
+        self.rotate_pwm.ChangeDutyCycle(50)
 
         self.pi.write(self.rotate_dir_pin, pigpio.HIGH)
         
@@ -61,7 +66,7 @@ class PlayerRow:
         self.pi.hardware_PWM(self.translate_step_pin, 0, 0)
 
     def stop_rotation(self):
-        self.pi.hardware_PWM(self.rotate_step_pin, 0, 0)
+        self.rotate_pwm.ChangeDutyCycle(0)
 
     def update_actuation(self, ball_pos, player_centers, active_player_index):
         if len(player_centers) == PLAYERS_IN_ROW:
@@ -87,7 +92,7 @@ class PlayerRow:
             pid = self.compute_translation_PID(ball_pos[1], active_player_pos[0])
 
             self.pi.hardware_PWM(self.translate_step_pin, int(abs(pid)) + MIN_TRANSLATE_FREQUENCY, 500000)
-            self.pi.write(self.translate_dir_pin, pigpio.HIGH) if pid < 0 else self.pi.write(self.translate_dir_pin, pigpio.LOW)
+            self.pi.write(self.translate_dir_pin, pigpio.LOW) if pid < 0 else self.pi.write(self.translate_dir_pin, pigpio.HIGH)
         else:
             self.pi.hardware_PWM(self.translate_step_pin, 0, 0)
 
